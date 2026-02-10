@@ -15,7 +15,7 @@ require __DIR__ . '/includes/header.php';
 <section class="card hero">
   <div class="hero-inner">
     <div>
-      <h1 class="h1">เว็บขายปุ๋ย <span style="color:#bfffdc">ULTRA</span> • สวยเหมือนเว็บจริง</h1>
+      <h1 class="h1">เว็บ <span style="color:#bfffdc">ขาย</span> • อุปกรณ์การเกษตร</h1>
       <p class="small" style="font-size:14px">
         ร้านค้าสำหรับขายอุปกรณ์การเกษตร ปุ๋ย เมล็ดพันธุ์ ผสมผสานดีไซน์ที่ทันสมัยและฟีเจอร์ครบครัน
       </p>
