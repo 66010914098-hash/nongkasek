@@ -10,18 +10,26 @@ function h($s): string {
 }
 
 function url(string $path = '/'): string {
-  // ถ้า path เป็นลิงก์เต็ม (http/https) คืนกลับเลย
   if (preg_match('~^https?://~i', $path)) return $path;
-
   if ($path === '') $path = '/';
   if ($path[0] !== '/') $path = '/' . $path;
-
   return rtrim(BASE_URL, '/') . $path;
 }
 
 function redirect(string $path): void {
   header('Location: ' . url($path));
   exit;
+}
+
+function ensure_dir(string $dir_fs): void {
+  if (!is_dir($dir_fs)) {
+    if (!mkdir($dir_fs, 0775, true) && !is_dir($dir_fs)) {
+      throw new Exception('สร้างโฟลเดอร์ไม่สำเร็จ: ' . $dir_fs);
+    }
+  }
+  if (!is_writable($dir_fs)) {
+    throw new Exception('โฟลเดอร์เขียนไม่ได้: ' . $dir_fs);
+  }
 }
 
 /* ---------------------------
@@ -58,14 +66,23 @@ function require_login(): void {
   }
 }
 
+function is_admin(): bool {
+  return !empty($_SESSION['is_admin']);
+}
+
+function require_admin(): void {
+  if (!is_admin()) {
+    set_flash('err', 'ต้องเป็นแอดมินเท่านั้น');
+    redirect('/admin/login.php');
+  }
+}
+
 /* ---------------------------
   Cart
 --------------------------- */
 
 function cart_init(): void {
-  if (!isset($_SESSION['cart']) || !is_array($_SESSION['cart'])) {
-    $_SESSION['cart'] = [];
-  }
+  if (!isset($_SESSION['cart']) || !is_array($_SESSION['cart'])) $_SESSION['cart'] = [];
 }
 
 function cart_count(): int {
@@ -76,40 +93,21 @@ function cart_count(): int {
 }
 
 /* ---------------------------
-  Product helper
+  Upload (สำคัญ)
+  - ย้ายไฟล์ไป dir_fs
+  - คืนค่าเป็นพาธเว็บ เช่น /uploads/products/xxx.jpg
 --------------------------- */
 
-function product_cover(PDO $pdo, int $product_id): ?string {
-  // ถ้าคุณเก็บรูปใน products.image ให้ใช้แบบนี้ (ถ้าไม่มีคอลัมน์นี้ ให้ return null)
-  try {
-    $st = $pdo->prepare("SELECT image FROM products WHERE id=? LIMIT 1");
-    $st->execute([$product_id]);
-    $row = $st->fetch();
-    if (!$row) return null;
-    $img = trim((string)($row['image'] ?? ''));
-    if ($img === '') return null;
+function safe_upload(array $file, array $allow_ext, string $dir_fs, string $name_prefix, string $dir_web): string {
+  $err = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+  if ($err !== UPLOAD_ERR_OK) return ''; // ให้ผู้เรียกเช็คเอง
 
-    // ถ้าเก็บเป็น path เช่น /uploads/products/xxx.jpg ก็คืนกลับได้เลย
-    return $img;
-  } catch (Exception $e) {
-    return null;
-  }
-}
+  $tmp = $file['tmp_name'] ?? '';
+  if ($tmp === '' || !is_uploaded_file($tmp)) return '';
 
-/* ---------------------------
-  Upload Slip (optional helper)
---------------------------- */
-
-function safe_upload(array $file, array $allow_ext, string $dir_fs, string $name_prefix): string {
-  if (!isset($file['tmp_name']) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-    throw new Exception('อัปโหลดไฟล์ไม่สำเร็จ');
-  }
-
-  $tmp = $file['tmp_name'];
   $size = (int)($file['size'] ?? 0);
-  if ($size > 5 * 1024 * 1024) {
-    throw new Exception('ไฟล์ใหญ่เกิน 5MB');
-  }
+  if ($size <= 0) return '';
+  if ($size > 10 * 1024 * 1024) return ''; // 10MB กันพัง
 
   $finfo = finfo_open(FILEINFO_MIME_TYPE);
   $mime = finfo_file($finfo, $tmp);
@@ -119,33 +117,20 @@ function safe_upload(array $file, array $allow_ext, string $dir_fs, string $name
     'image/jpeg' => 'jpg',
     'image/png'  => 'png',
     'image/webp' => 'webp',
-    'application/pdf' => 'pdf'
   ];
 
-  if (!isset($map[$mime])) throw new Exception('ชนิดไฟล์ไม่รองรับ');
-
+  if (!isset($map[$mime])) return '';
   $ext = $map[$mime];
-  if (!in_array($ext, $allow_ext, true)) throw new Exception('นามสกุลไม่อนุญาต');
+  if (!in_array($ext, $allow_ext, true)) return '';
 
-  if (!is_dir($dir_fs)) mkdir($dir_fs, 0775, true);
+  ensure_dir($dir_fs);
 
   $name = $name_prefix . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
   $path_fs = rtrim($dir_fs, '/\\') . DIRECTORY_SEPARATOR . $name;
 
-  if (!move_uploaded_file($tmp, $path_fs)) {
-    throw new Exception('ย้ายไฟล์ไม่สำเร็จ');
-  }
+  if (!move_uploaded_file($tmp, $path_fs)) return '';
 
-  // คืนค่าเป็น path web ให้คุณกำหนดเองภายนอก (เช่น /uploads/slips/xxx.jpg)
-  return $name;
-}
-function is_admin(): bool {
-  return !empty($_SESSION['is_admin']);
-}
-
-function require_admin(): void {
-  if (!is_admin()) {
-    set_flash('err', 'ต้องเป็นแอดมินเท่านั้น');
-    redirect('/admin/login.php');
-  }
+  // ✅ คืนค่าเป็นพาธเว็บ (ไว้เก็บ DB)
+  $dir_web = rtrim($dir_web, '/');
+  return $dir_web . '/' . $name;
 }

@@ -21,13 +21,27 @@ if ($id) {
   $imgs = $st->fetchAll();
 }
 
+function upload_error_text(int $code): string {
+  return match($code) {
+    UPLOAD_ERR_OK => 'OK',
+    UPLOAD_ERR_INI_SIZE => 'ไฟล์ใหญ่เกินค่า upload_max_filesize (php.ini)',
+    UPLOAD_ERR_FORM_SIZE => 'ไฟล์ใหญ่เกิน MAX_FILE_SIZE',
+    UPLOAD_ERR_PARTIAL => 'อัปโหลดมาไม่ครบ (partial)',
+    UPLOAD_ERR_NO_FILE => 'ไม่ได้เลือกไฟล์',
+    UPLOAD_ERR_NO_TMP_DIR => 'ไม่มีโฟลเดอร์ temp บนเซิร์ฟเวอร์',
+    UPLOAD_ERR_CANT_WRITE => 'เขียนไฟล์ลงดิสก์ไม่ได้ (permission)',
+    UPLOAD_ERR_EXTENSION => 'ถูก PHP extension บล็อก',
+    default => 'ไม่ทราบสาเหตุ (code '.$code.')',
+  };
+}
+
 if (isset($_POST['save'])) {
   $category_id = (int)($_POST['category_id'] ?? 1);
-  $name = trim($_POST['name'] ?? '');
-  $slug = trim($_POST['slug'] ?? '');
+  $name  = trim($_POST['name'] ?? '');
+  $slug  = trim($_POST['slug'] ?? '');
   $price = (float)($_POST['price'] ?? 0);
   $stock = (int)($_POST['stock'] ?? 0);
-  $desc = trim($_POST['description'] ?? '');
+  $desc  = trim($_POST['description'] ?? '');
   $active = isset($_POST['is_active']) ? 1 : 0;
 
   if ($id) {
@@ -39,24 +53,43 @@ if (isset($_POST['save'])) {
     $id = (int)$pdo->lastInsertId();
   }
 
+  // ===== Upload Images =====
   if (!empty($_FILES['images']['name'][0])) {
+    // ensure_dir อยู่ใน functions.php แล้ว
     ensure_dir(PRODUCT_IMG_DIR);
+
     $count = count($_FILES['images']['name']);
     $nextSort = (int)($_POST['next_sort'] ?? 0);
+
     for ($i=0; $i<$count; $i++) {
       $file = [
-        'name' => $_FILES['images']['name'][$i],
-        'type' => $_FILES['images']['type'][$i],
-        'tmp_name' => $_FILES['images']['tmp_name'][$i],
-        'error' => $_FILES['images']['error'][$i],
-        'size' => $_FILES['images']['size'][$i],
+        'name' => $_FILES['images']['name'][$i] ?? '',
+        'type' => $_FILES['images']['type'][$i] ?? '',
+        'tmp_name' => $_FILES['images']['tmp_name'][$i] ?? '',
+        'error' => (int)($_FILES['images']['error'][$i] ?? UPLOAD_ERR_NO_FILE),
+        'size' => (int)($_FILES['images']['size'][$i] ?? 0),
       ];
-      if (!empty($file['name'])) {
-        $webPath = safe_upload($file, ['jpg','jpeg','png','webp'], PRODUCT_IMG_DIR, 'p'.$id);
-        $pdo->prepare("INSERT INTO product_images(product_id,image_path,sort_order) VALUES(?,?,?)")
-            ->execute([$id,$webPath,$nextSort]);
-        $nextSort++;
+
+      if ($file['name'] === '') continue;
+
+      // ✅ เช็ค error ก่อน
+      if ($file['error'] !== UPLOAD_ERR_OK) {
+        set_flash('err', 'อัปโหลดรูปไม่สำเร็จ: '.h($file['name']).' — '.upload_error_text($file['error']));
+        continue;
       }
+
+      // ✅ คืนพาธเว็บ เช่น /uploads/products/xxx.jpg
+      $webPath = safe_upload($file, ['jpg','jpeg','png','webp'], PRODUCT_IMG_DIR, 'p'.$id, PRODUCT_IMG_URL);
+
+      if ($webPath === '') {
+        set_flash('err', 'บันทึกรูปไม่สำเร็จ: '.h($file['name']).' (เช็ค permission/โฟลเดอร์ uploads)');
+        continue;
+      }
+
+      $pdo->prepare("INSERT INTO product_images(product_id,image_path,sort_order) VALUES(?,?,?)")
+          ->execute([$id, $webPath, $nextSort]);
+
+      $nextSort++;
     }
   }
 
@@ -75,16 +108,20 @@ require __DIR__ . '/../includes/header.php';
 ?>
 <div class="card panel" style="max-width:980px;margin:0 auto">
   <div class="section-title">
-    <div><div class="h2"><?= $id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า' ?></div><div class="small">อัปโหลดรูปได้หลายรูป</div></div>
+    <div>
+      <div class="h2"><?= $id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า' ?></div>
+      <div class="small">อัปโหลดรูปได้หลายรูป</div>
+    </div>
     <a class="btn" href="<?= h(url('/admin/products.php')) ?>">กลับ</a>
   </div>
 
-  <div style="margin-top:12px"></div>
-  <form method="post" enctype="multipart/form-data">
+  <form method="post" enctype="multipart/form-data" style="margin-top:14px">
     <label class="small">หมวดสินค้า</label>
     <select class="input" name="category_id">
       <?php foreach($cats as $c): ?>
-        <option value="<?= (int)$c['id'] ?>" <?= (int)$p['category_id']===(int)$c['id']?'selected':'' ?>><?= h($c['name']) ?></option>
+        <option value="<?= (int)$c['id'] ?>" <?= (int)$p['category_id']===(int)$c['id']?'selected':'' ?>>
+          <?= h($c['name']) ?>
+        </option>
       <?php endforeach; ?>
     </select>
 
@@ -97,9 +134,20 @@ require __DIR__ . '/../includes/header.php';
     <input class="input" name="slug" value="<?= h((string)$p['slug']) ?>" required>
 
     <div class="row wrap" style="margin-top:12px;align-items:flex-end">
-      <div style="flex:1;min-width:180px"><label class="small">ราคา</label><input class="input" type="number" step="0.01" name="price" value="<?= h((string)$p['price']) ?>" required></div>
-      <div style="flex:1;min-width:180px"><label class="small">สต็อก</label><input class="input" type="number" name="stock" value="<?= h((string)$p['stock']) ?>" required></div>
-      <div style="flex:1;min-width:180px"><label class="small">สถานะ</label><br><label class="small"><input type="checkbox" name="is_active" <?= (int)$p['is_active']===1?'checked':'' ?>> เปิดขาย</label></div>
+      <div style="flex:1;min-width:180px">
+        <label class="small">ราคา</label>
+        <input class="input" type="number" step="0.01" name="price" value="<?= h((string)$p['price']) ?>" required>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label class="small">สต็อก</label>
+        <input class="input" type="number" name="stock" value="<?= h((string)$p['stock']) ?>" required>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label class="small">สถานะ</label><br>
+        <label class="small">
+          <input type="checkbox" name="is_active" <?= (int)$p['is_active']===1?'checked':'' ?>> เปิดขาย
+        </label>
+      </div>
     </div>
 
     <div style="margin-top:12px"></div>
@@ -118,13 +166,22 @@ require __DIR__ . '/../includes/header.php';
   <?php if($id): ?>
     <div class="hr"></div>
     <div style="font-weight:950;margin-bottom:8px">รูปสินค้า</div>
+
+    <?php
+      $st = $pdo->prepare("SELECT * FROM product_images WHERE product_id=? ORDER BY sort_order ASC, id ASC");
+      $st->execute([$id]);
+      $imgs = $st->fetchAll();
+    ?>
+
     <?php if(!$imgs): ?>
       <div class="small">ยังไม่มีรูป</div>
     <?php else: ?>
       <div class="row wrap">
         <?php foreach($imgs as $im): ?>
           <div class="card panel" style="width:220px;box-shadow:none">
-            <div class="thumb"><img src="<?= h(url($im['image_path'])) ?>" alt=""></div>
+            <div class="thumb">
+              <img src="<?= h(url($im['image_path'])) ?>" alt="">
+            </div>
             <div style="margin-top:12px"></div>
             <form method="post">
               <input type="hidden" name="img_id" value="<?= (int)$im['id'] ?>">

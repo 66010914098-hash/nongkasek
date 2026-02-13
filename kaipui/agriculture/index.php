@@ -17,7 +17,7 @@ require __DIR__ . '/includes/header.php';
     <div>
       <h1 class="h1">เว็บ <span style="color:#bfffdc">ขาย</span> • อุปกรณ์การเกษตร</h1>
       <p class="small" style="font-size:14px">
-        ร้านค้าสำหรับขายอุปกรณ์การเกษตร ปุ๋ย เมล็ดพันธุ์ ที่ครบครัน
+        ร้านค้าสำหรับขายอุปกรณ์การเกษตร ปุ๋ย เมล็ดพันธุ์ ผสมผสานดีไซน์ที่ทันสมัยและฟีเจอร์ครบครัน
       </p>
       <div class="kpi" style="margin-top:12px">
         <span class="chip">✅ อุปกรณ์การเกษตร</span>
