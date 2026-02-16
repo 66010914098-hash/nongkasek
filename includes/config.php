@@ -30,7 +30,7 @@ define('BASE_URL', $dir);
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'fertilizer_shop');
 define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_PASS', 'Acc123456#');
 
 // =====================
 // SESSION + TIMEZONE
