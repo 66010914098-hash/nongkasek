@@ -119,12 +119,28 @@ function safe_upload(array $file, array $allow_ext, string $dir_fs, string $name
   finfo_close($finfo);
 
   $map = [
-    'image/jpeg' => 'jpg',
-    'image/png'  => 'png',
-    'image/webp' => 'webp',
-    'application/pdf' => 'pdf'
-  ];
 
+    // ===== มาตรฐานหลัก =====
+    'image/jpeg'      => 'jpg',
+    'image/jpg'       => 'jpg',
+    'image/png'       => 'png',
+    'image/webp'      => 'webp',
+    'image/gif'       => 'gif',
+  
+    // ===== รุ่นใหม่ / คุณภาพสูง =====
+    'image/avif'      => 'avif',
+    'image/heic'      => 'heic',
+    'image/heif'      => 'heif',
+  
+    // ===== ไฟล์ภาพอื่น ๆ =====
+    'image/bmp'       => 'bmp',
+    'image/x-ms-bmp'  => 'bmp',
+    'image/tiff'      => 'tif',
+    'image/x-icon'    => 'ico',
+    'image/vnd.microsoft.icon' => 'ico',
+    'image/svg+xml'   => 'svg'
+  ];
+  
   if (!isset($map[$mime])) throw new Exception('ชนิดไฟล์ไม่รองรับ');
 
   $ext = $map[$mime];
